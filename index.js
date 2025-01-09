@@ -4,6 +4,7 @@ const cors = require('cors')
 const app = express()
 const jwt = require('jsonwebtoken')
 const port = process.env.PORT || 5000
+const stripe = require('stripe')(process.env.SECRET_KEYS)
 
 // middleware 
 app.use(cors())
@@ -192,6 +193,27 @@ async function run() {
             const result = await usersCollection.updateOne(filter, updateDoc, options)
             res.send(result)
         })
+
+
+        // payment intent 
+        app.post('/create-payment-intent', async (req, res) => {
+            const { price } = req.body;
+            console.log(price);
+            const amount = parseInt(price * 100)
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: amount,
+                currency: 'usd',
+                payment_method_types: ['card']
+            })
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+            });
+        })
+
+
+
+
+
 
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
