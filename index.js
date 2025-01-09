@@ -52,6 +52,7 @@ async function run() {
         const reviewsCollection = database.collection("reviews");
         const cartsCollection = database.collection("carts");
         const usersCollection = database.collection("users");
+        const paymentsCollection = database.collection("payments");
 
         // jwt sing in 
         app.post('/jwt-sing', async (req, res) => {
@@ -198,7 +199,6 @@ async function run() {
         // payment intent 
         app.post('/create-payment-intent', async (req, res) => {
             const { price } = req.body;
-            console.log(price);
             const amount = parseInt(price * 100)
             const paymentIntent = await stripe.paymentIntents.create({
                 amount: amount,
@@ -208,6 +208,18 @@ async function run() {
             res.send({
                 clientSecret: paymentIntent.client_secret,
             });
+        })
+
+        app.post('/payments', async (req, res) => {
+            const payment = req.body
+            const paymentResult = await paymentsCollection.insertOne(payment)
+            const query = {
+                _id: {
+                    $in: payment.cardIds.map(id => new ObjectId(id))
+                }
+            }
+            const deleteResult = await cartsCollection.deleteMany(query)
+            res.send({ paymentResult, deleteResult })
         })
 
 
