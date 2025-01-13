@@ -215,17 +215,92 @@ async function run() {
             const paymentResult = await paymentsCollection.insertOne(payment)
             const query = {
                 _id: {
-                    $in: payment.cardIds.map(id => new ObjectId(id))
+                    $in: payment.cartIds.map(id => new ObjectId(id))
                 }
             }
+
             const deleteResult = await cartsCollection.deleteMany(query)
             res.send({ paymentResult, deleteResult })
         })
 
+        app.get('/payments-history/:email', verifyToken, async (req, res) => {
+            if (req.params.email !== req.decoded.email) {
+                return res.status(403).message('forbidden access')
+            }
+            const email = req.params.email
+            const findAllPaymentHistory = await paymentsCollection.find({ email }).toArray()
+            res.send(findAllPaymentHistory)
+        })
 
 
+        // admin home status 
+        app.get('/admin-status', async (req, res) => {
+            const customer = await usersCollection.estimatedDocumentCount()
+            const products = await menusCollection.estimatedDocumentCount()
+            const orders = await paymentsCollection.estimatedDocumentCount()
+            const totalPrice = await paymentsCollection.aggregate([
+                {
+                    $group: {
+                        _id: null,
+                        totalRevenue: { $sum: "$price" }
+                    }
+                }
+            ]).toArray()
+            // [ { _id: null, totalRevenue: 105.4 } ]
+            const revenue = totalPrice[0].totalRevenue
+            res.send({ customer, revenue, products, orders })
+        })
 
+        // using aggregate
+        app.get('/order-stats', async (req, res) => {
+            const result = await paymentsCollection.aggregate([
+                {
+                    $unwind: '$menuIds'
+                },
 
+                {
+                    $addFields: {
+                        menuIds: { $toObjectId: '$menuIds' },
+                    },
+                },
+                // match menu collection feild 
+                {
+                    $lookup: {
+                        from: 'menus',
+                        localField: 'menuIds',
+                        foreignField: '_id',
+                        as: 'menuItems',
+                    }
+                },
+
+                //  match array unwind
+                {
+                    $unwind: '$menuItems'
+                },
+                // group by want feild  
+                {
+                    $group: {
+                        _id: '$menuItems.category',
+                        quantity: {
+                            $sum: 1
+                        },
+                        revenue: {
+                            $sum: '$menuItems.price'
+                        }
+                    }
+                },
+                // show what i can show 
+                {
+                    $project: {
+                        _id: 0,
+                        category: '$_id',
+                        quantity: '$quantity',
+                        revenue: '$revenue'
+                    }
+                }
+            ]).toArray()
+            res.send(result)
+        })
 
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
